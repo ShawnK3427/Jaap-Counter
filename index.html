@@ -68,7 +68,43 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 @keyframes au-sp{to{transform:rotate(360deg)}}
 @keyframes au-fl{0%{opacity:.5;transform:scale(1)}100%{opacity:0;transform:scale(1.18)}}
 @keyframes au-rip{0%{transform:scale(1);opacity:0}18%{opacity:.5}100%{transform:scale(1.75);opacity:0}}
-#toJapa,#recNum,#recLbl,#recCircle,#recFlash{display:none}
+#toJapa,#recNum,#recLbl,#recCircle,#recFlash,#verse{display:none}
+body.rec.verse #verse{display:block}
+body.rec.verse #fullMantra{display:none}
+body.rec.verse #ring,body.rec.verse #aura{width:min(52vw,32vh);height:min(52vw,32vh)}
+body.rec.verse #recNum{font-size:clamp(44px,14vw,64px)}
+#verse{margin:0 0 12px}
+#vHead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px}
+#vName{font-family:var(--serif);font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#vBody{display:flex;align-items:center;gap:8px}
+#vDrum{position:relative;flex:1;height:162px;overflow:hidden;cursor:pointer;
+  -webkit-mask-image:linear-gradient(transparent 0,#000 28%,#000 72%,transparent 100%);
+  mask-image:linear-gradient(transparent 0,#000 28%,#000 72%,transparent 100%)}
+#vStrip{position:absolute;left:0;right:0;top:0}
+.vr{height:54px;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 4px;overflow:hidden}
+.vr span{font-family:var(--dev);font-size:14px;line-height:1.35;color:var(--muted);opacity:.55;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;transition:font-size .5s,color .5s,opacity .5s}
+.vr.cur span{font-size:19px;color:var(--paper);opacity:1}
+.vr.end span{font-family:var(--serif);font-size:13px;letter-spacing:.1em;color:var(--ghee);opacity:.9}
+#vOver{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:11px;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--ghee);background:rgba(18,14,28,.6)}
+#vDrum.hold #vOver{display:flex}
+#vBtns{display:flex;flex-direction:column;gap:10px;flex:none}
+#vBtns button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);font-size:13px;color:var(--paper)}
+#vBtns button:active{background:var(--ash)}
+#vBar{height:2px;background:var(--ash);border-radius:2px;overflow:hidden;margin:6px 50px 4px 0}
+#vBarF{height:100%;width:0;background:var(--ghee);transition:width .25s linear}
+#vPace{letter-spacing:.12em}
+#vFoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-right:50px}
+#vMode{flex:none;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted)}
+#vMode.on{border-color:rgba(240,201,122,.5);color:var(--ghee)}
+body.vman #vBar{visibility:hidden}
+#recSetup .row{flex-wrap:wrap}
+#recSetup .acts{width:100%;margin-top:8px;flex-wrap:wrap}
+.ted{padding:4px 0 14px;border-bottom:1px solid var(--ash)}
+.ted textarea{width:100%;min-height:220px;background:var(--ash);border:1px solid var(--line);border-radius:10px;color:var(--paper);
+  font-family:var(--dev);font-size:16px;line-height:1.6;padding:10px;resize:vertical}
 #recFlash{font-family:var(--serif);font-size:20px;color:var(--paper);margin-top:12px;min-height:26px;
   opacity:0;transition:opacity .25s ease-out}
 #recFlash.show{opacity:1}
@@ -263,6 +299,21 @@ input[type=text]{width:100%;text-align:left}
 
   <div id="bottom">
     <div id="fullMantra">ॐ</div>
+    <div id="verse">
+      <div id="vHead"><span id="vName"></span><span class="lbl" id="vPos"></span></div>
+      <div id="vBody">
+        <div id="vDrum" role="button" tabindex="-1" aria-label="Tap to start or pause the verses">
+          <div id="vStrip"></div>
+          <div id="vOver"></div>
+        </div>
+        <div id="vBtns">
+          <button id="vUp" aria-label="It got ahead of me — back one line">&#9650;</button>
+          <button id="vDown" aria-label="I'm on the next line">&#9660;</button>
+        </div>
+      </div>
+      <div id="vBar"><div id="vBarF"></div></div>
+      <div id="vFoot"><span class="lbl" id="vPace"></span><button id="vMode" aria-pressed="true">Auto</button></div>
+    </div>
     <div id="status">
       <div class="pill" id="pKey">Button</div>
       <div class="pill" id="pTap">Screen</div>
@@ -446,7 +497,7 @@ function defaults(){return{
   mantra:"hraam", customs:[],
   mala:108, target:108, goals:{}, rollover:3,
   bead:0, days:{}, totals:{}, sessions:[], recite:{}, recComplete:{}, recTimes:{}, excused:[], recList:DEFAULT_REC.map(function(r){return {id:r.id,n:r.n,archived:false};}),
-  set:{key:true,ding:false,tap:true,vib:true,wake:true,aura:2,ripple:true}
+  set:{key:true,ding:false,tap:true,vib:true,wake:true,aura:2,ripple:true,vAuto:true}
 };}
 var S=defaults();
 
@@ -570,6 +621,7 @@ function render(){
     var r=findRec(S.recSel);
     $("recNum").textContent=recCount(r.id,today());
     $("fullMantra").textContent=r.n;
+    verseSync();
     $("chipLbl").textContent="Yesterday";
     $("todayN").textContent=recCount(r.id,dayKey(1));
     $("chipOf").style.display="none";
@@ -579,6 +631,7 @@ function render(){
     return;
   }
   $("chipLbl").textContent="Today"; $("chipOf").style.display="";
+  verseSync();
   var m=cur();
   $("mantraName").innerHTML=m.t.charAt(0).toUpperCase()+m.t.slice(1)+' <span>· '+m.n+'</span>'+
     (m.p?'<br><span id="planetTag">'+m.p+(m.day?' · '+m.day:'')+'</span>':'');
@@ -640,7 +693,7 @@ function count(src){
     var tr=recTimeCount(rid,Date.now());
     if(tr) flashTime(tr.d); else clearFlash();
     var rn=$("recNum"); rn.classList.add("pulse"); setTimeout(function(){ rn.classList.remove("pulse"); },120);
-    flare(); buzz(14); save(); render(); return;
+    flare(); buzz(14); save(); render(); verseAfterCount(); return;
   }
   var k=today(), m=cur().id;
   if(!S.days[k]) S.days[k]={n:0};
@@ -820,6 +873,197 @@ function openRecCounter(id){
 }
 function toJapa(){ S.mode="japa"; save(); render(); syncWake(); }
 
+/* ---------- verse scroller ----------
+   Shows the recitation's text three lines at a time and rolls on at a learned pace.
+   Lines come from the text's line breaks, further split after । and ॥ (verse numbers
+   like ॥१॥ stay with their line). Pace is learned per character, so long lines stay
+   longer: each ▼ or ▲ press is a sample, and the last five are averaged. With no
+   samples yet, the recitation's average recorded time is spread over the text. */
+var V={id:null,sig:null,lines:[],bodyStart:0,closeStart:0,repeating:false,gated:false,idx:0,t0:0,started:false,paused:true,atEnd:false,rolling:false,timer:null,tick:null,dwell:[],pausedAt:0};
+var V_ROW=54, V_DEF=180, V_MIN=30, V_MAX=2000, V_SKIP=700;
+/* Marker lines: everything above [repeat] is said on the first round only; everything
+   below [closing] on the last round only. Both optional; the lines themselves never show. */
+var MARK_REP=/^\s*\[\s*repeat\s*\]\s*$/i, MARK_CLO=/^\s*\[\s*closing\s*\]\s*$/i;
+function parseVerses(t){
+  var out=[], bodyStart=0, closeStart=-1, hasRep=false, letter=/[\u0904-\u0939\u0958-\u0961\u0972-\u097FA-Za-z]/;
+  String(t||"").replace(/\r/g,"").replace(/।\s*।/g,"॥").split("\n").forEach(function(line){
+    if(MARK_REP.test(line)){ if(!hasRep){ hasRep=true; bodyStart=out.length; } return; }
+    if(MARK_CLO.test(line)){ if(closeStart<0) closeStart=out.length; return; }
+    var segs=line.match(/[^।॥]+(?:।|॥(?:\s*[०-९0-9]+\s*॥)?)?|[।॥]+/g)||[];
+    segs.forEach(function(sg){
+      sg=sg.replace(/\s+/g," ").trim(); if(!sg) return;
+      if(!letter.test(sg)){ if(out.length) out[out.length-1]+=" "+sg; return; }
+      out.push(sg);
+    });
+  });
+  if(closeStart<0) closeStart=out.length;
+  var bad=bodyStart>closeStart||(bodyStart===closeStart&&out.length>0);
+  if(bad){ bodyStart=0; closeStart=out.length; }
+  return {lines:out,bodyStart:bodyStart,closeStart:closeStart,bad:bad};
+}
+function splitVerses(t){ return parseVerses(t).lines; }
+function vLen(s){ return (String(s).replace(/[\s,.;:!?।॥०-९0-9\-–—'"()]/g,"").length)||1; }
+function vClamp(x){ return Math.max(V_MIN,Math.min(V_MAX,x)); }
+function vPace(r){
+  var a=(r&&r.paceS)||[];
+  if(a.length){ var s=0; for(var i=0;i<a.length;i++) s+=a[i]; return vClamp(s/a.length); }
+  var RT=r?recTimesOf(r.id):[];
+  if(RT.length&&V.lines.length){
+    var tot=0,chars=0,j;
+    for(j=0;j<RT.length;j++) tot+=RT[j].d;
+    for(j=0;j<V.lines.length;j++) chars+=vLen(V.lines[j]);
+    return vClamp(tot/RT.length/chars);
+  }
+  return V_DEF;
+}
+function vPaceLabel(r){
+  if(!vAuto()) return "\u25b2\u25bc move freely";
+  var a=(r&&r.paceS)||[];
+  if(a.length) return "pace learned \u00b7 "+a.length+" of 5";
+  return recTimesOf(r?r.id:"").length?"pace from your average time":"starting pace \u00b7 tune with \u25b2\u25bc";
+}
+function vLearn(sample){
+  var r=findRec(V.id); if(!r) return;
+  if(!Array.isArray(r.paceS)) r.paceS=[];
+  r.paceS.push(Math.round(vClamp(sample)));
+  while(r.paceS.length>5) r.paceS.shift();
+  save();
+}
+function verseActive(){ return !!(recModeOk()&&V.id===S.recSel&&V.lines.length); }
+function verseStop(){ clearTimeout(V.timer); V.timer=null; clearInterval(V.tick); V.tick=null; }
+function verseLoad(r){
+  verseStop();
+  var pv=parseVerses(r.text);
+  V.id=r.id; V.sig=r.text; V.lines=pv.lines; V.bodyStart=pv.bodyStart; V.closeStart=pv.closeStart;
+  V.repeating=false; V.gated=false; V.idx=0; V.started=false; V.paused=true;
+  V.atEnd=false; V.rolling=false; V.dwell=[]; V.t0=Date.now();
+  vPaint();
+}
+function verseUnload(){ verseStop(); V.id=null; V.sig=null; V.lines=[]; V.repeating=false; V.gated=false; }
+function vHasClose(){ return V.closeStart<V.lines.length; }
+function vAuto(){ return S.set.vAuto!==false; }
+function vDue(i){ return vPace(findRec(V.id))*vLen(V.lines[i]); }
+function vRows(c){
+  var h="";
+  for(var k=c-2;k<=c+2;k++){
+    var t=(k>=0&&k<V.lines.length)?esc(V.lines[k]):(k===V.lines.length?"end \u00b7 press your button to count":"");
+    h+='<div class="vr'+(k===c?" cur":"")+(k===V.lines.length?" end":"")+'"><span>'+t+'</span></div>';
+  }
+  return h;
+}
+function vFit(){
+  var sp=document.querySelector("#vStrip .vr.cur span"); if(!sp||!sp.parentNode.clientHeight) return;
+  var f=19; sp.style.fontSize="";
+  while(sp.scrollHeight>sp.parentNode.clientHeight+1&&f>13){ f--; sp.style.fontSize=f+"px"; }
+}
+function vPaint(){
+  var st=$("vStrip");
+  st.style.transition="none"; st.style.transform="translateY("+(-V_ROW)+"px)";
+  st.innerHTML=vRows(V.idx); vFit();
+  var r=findRec(V.id);
+  $("vName").textContent=r?r.n:"";
+  var sec=V.atEnd?"":(V.idx<V.bodyStart?" \u00b7 opening":(V.idx>=V.closeStart?" \u00b7 closing":""));
+  $("vPos").textContent=V.atEnd?"end of text":("line "+(V.idx+1)+" of "+V.lines.length+sec);
+  if(V.gated) $("vPos").textContent="press to repeat \u00b7 \u25bc for closing";
+  $("vPace").textContent=vPaceLabel(r);
+  var hold=vAuto()&&(!V.started||V.paused);
+  document.body.classList.toggle("vman",!vAuto());
+  $("vMode").textContent=vAuto()?"Auto":"Manual";
+  $("vMode").classList.toggle("on",vAuto());
+  $("vMode").setAttribute("aria-pressed",vAuto()?"true":"false");
+  $("vDrum").classList.toggle("hold",hold);
+  $("vOver").textContent=!V.started?"Tap to begin":"Paused \u00b7 tap to resume";
+  vBar();
+}
+function vBar(){
+  var f=0;
+  if(V.atEnd||V.gated) f=1;
+  else if(V.started&&V.lines.length){ var el=(V.paused?V.pausedAt:Date.now())-V.t0; f=Math.min(1,Math.max(0,el/vDue(V.idx))); }
+  $("vBarF").style.width=(f*100)+"%";
+}
+function vSchedule(){
+  clearTimeout(V.timer); V.timer=null;
+  if(!vAuto()||!verseActive()||!V.started||V.paused||V.atEnd) return;
+  var left=vDue(V.idx)-(Date.now()-V.t0);
+  V.timer=setTimeout(function(){ vAdvance(false); },Math.max(0,left));
+  if(!V.tick) V.tick=setInterval(vBar,250);
+}
+function vRoll(dir,after){
+  if(V.rolling) return; V.rolling=true;
+  var st=$("vStrip");
+  st.innerHTML=vRows(V.idx);
+  var rows=st.children; rows[2].classList.remove("cur"); rows[2+dir].classList.add("cur");
+  st.style.transition="transform .7s cubic-bezier(.3,.1,.2,1)";
+  st.style.transform="translateY("+(-V_ROW-dir*V_ROW)+"px)";
+  setTimeout(function(){ V.rolling=false; if(verseActive()) after(); },720);
+}
+function vAdvance(manual){
+  if(V.rolling||!verseActive()) return;
+  if(V.atEnd){ if(manual) toast("End of text \u2014 press your button to count"); return; }
+  if(!manual&&V.repeating&&vHasClose()&&V.idx===V.closeStart-1){ V.gated=true; vPaint(); return; }
+  var live=vAuto()&&V.started&&!V.paused, el=Date.now()-V.t0;
+  if(manual&&live&&!V.gated&&el>=V_SKIP) vLearn(el/vLen(V.lines[V.idx]));
+  V.gated=false;
+  V.dwell[V.idx]=el;
+  vRoll(1,function(){
+    if(V.idx+1>=V.lines.length){ V.atEnd=true; V.idx=V.lines.length; } else V.idx++;
+    V.t0=Date.now(); if(V.paused) V.pausedAt=V.t0;
+    vPaint(); vSchedule();
+  });
+}
+function vBack(){
+  if(V.rolling||!verseActive()) return;
+  if(V.idx===0&&!V.atEnd) return;
+  var prev=V.atEnd?V.lines.length-1:V.idx-1;
+  if(vAuto()&&V.started&&!V.paused&&!V.gated) vLearn(((V.dwell[prev]||vDue(prev))+(Date.now()-V.t0))/vLen(V.lines[prev]));
+  V.gated=false;
+  vRoll(-1,function(){
+    V.idx=prev; V.atEnd=false; V.t0=Date.now(); if(V.paused) V.pausedAt=V.t0;
+    vPaint(); vSchedule();
+  });
+}
+function vToggle(){
+  if(!vAuto()||!verseActive()||V.rolling) return;
+  if(!V.started){ V.started=true; V.paused=false; V.t0=Date.now(); }
+  else if(V.paused){ V.paused=false; V.t0+=Date.now()-V.pausedAt; }
+  else { V.paused=true; V.pausedAt=Date.now(); }
+  vPaint(); vSchedule();
+}
+function vPause(){ if(verseActive()&&V.started&&!V.paused){ V.paused=true; V.pausedAt=Date.now(); vSchedule(); vPaint(); } }
+/* a counted recitation starts the text again from the top */
+/* Pressed before the last line of a text with closing verses: more rounds coming, so the
+   next one starts at [repeat]. Pressed at the last line or the end: the set is finished,
+   back to the very top. Texts without closing verses always go back to [repeat]. */
+function verseAfterCount(){
+  if(!verseActive()||(vAuto()&&!V.started)) return;
+  var done=vHasClose()&&(V.atEnd||V.idx>=V.lines.length-1);
+  if(done){ V.idx=0; V.repeating=false; } else { V.idx=V.bodyStart; V.repeating=true; }
+  V.atEnd=false; V.gated=false; V.dwell=[]; V.paused=false; V.t0=Date.now();
+  if(!vAuto()) V.started=true;
+  vPaint(); vSchedule();
+}
+/* called from render(): load, keep or drop the verse panel for the current mode */
+function verseSync(){
+  var r=recModeOk()?findRec(S.recSel):null;
+  var has=!!(r&&r.text&&splitVerses(r.text).length);
+  document.body.classList.toggle("verse",has);
+  if(!has){ if(V.id) verseUnload(); return; }
+  if(V.id!==r.id||V.sig!==r.text) verseLoad(r);
+}
+$("vDrum").addEventListener("click",function(){ vToggle(); this.blur(); });
+$("vDown").addEventListener("click",function(){ vAdvance(true); this.blur(); });
+$("vUp").addEventListener("click",function(){ vBack(); this.blur(); });
+/* Auto ⇄ Manual. Back to Auto: if the text was already under way it resumes from the
+   current line; otherwise it waits for a tap as usual. */
+$("vMode").addEventListener("click",function(){
+  S.set.vAuto=!vAuto(); save();
+  if(!vAuto()){ V.gated=false; if(V.started){ V.paused=false; } verseStop(); }
+  else if(V.started){ V.paused=false; V.t0=Date.now(); }
+  vPaint(); vSchedule(); this.blur();
+  toast(vAuto()?"Auto-scroll on":"Auto-scroll off \u2014 \u25b2\u25bc move freely");
+});
+document.addEventListener("visibilitychange",function(){ if(document.visibilityState!=="visible") vPause(); });
+
 /* ---------- recitation timing ----------
    Each count ends one recitation; the gap since the previous count (or since the counter
    was opened) is how long it took. Under 10 s is a double press, over 60 min means the
@@ -880,6 +1124,7 @@ function recSummary(id){
 }
 function isComplete(id){ return !!(S.recComplete&&S.recComplete[id]); }
 var recArm={}, recArmT={};
+var recEditing=null;
 function drawRecSetup(){
   var html="", RL=activeRec();
   for(var i=0;i<RL.length;i++){
@@ -887,15 +1132,47 @@ function drawRecSetup(){
     var sub=c ? "Completed · "+c.days+" days · "+fmtD(c.first)+" – "+fmtD(c.last)
               : (sm ? sm.days+" days so far · since "+fmtD(sm.first) : "Not started");
     var lbl=c ? "Reopen" : (recArm[r.id] ? "Tap again" : "Complete");
+    var nl=r.text?splitVerses(r.text).length:0;
+    sub+=" \u00b7 "+(nl?nl+" lines of text":"no text");
     html+='<div class="row"><div><div class="t">'+esc(r.n)+'</div><p>'+sub+'</p></div>'+
           '<div class="acts">'+(c?'':'<button data-rcount="'+r.id+'" style="color:var(--ghee)">Count</button>')+
+          '<button data-rtext="'+r.id+'">Text</button>'+
           '<button data-rc="'+r.id+'" style="color:var(--muted)">'+lbl+'</button>'+
           '<button data-ra="'+r.id+'">Archive</button></div></div>';
+    if(recEditing===r.id)
+      html+='<div class="ted"><textarea id="tedArea" spellcheck="false" maxlength="20000" placeholder="Paste the text in Devanagari. Each line break starts a new screen line; lines also split after । and ॥."></textarea>'+
+            '<p class="note" style="margin:6px 0 0">Optional markers, each on a line of its own: <b>[repeat]</b> — lines above it are said on the first round only. <b>[closing]</b> — lines below it on the last round only. Editing the text never changes your counts.</p>'+
+            '<p class="note" id="tedInfo" style="margin:6px 0 10px"></p>'+
+            '<div style="display:flex;gap:8px"><button id="tedSave" class="ghostbtn" style="flex:1;margin:0;color:var(--ghee);border-color:rgba(240,201,122,.45)">Save</button>'+
+            '<button id="tedCancel" class="ghostbtn" style="flex:1;margin:0">Cancel</button></div></div>';
   }
   if(!RL.length) html+='<p class="note">No active recitations. Add one below, or restore one from Archived.</p>';
   html+='<div class="addrow"><input type="text" id="recNew" placeholder="Add a recitation, e.g. Shiv Tandav Stotra" maxlength="40">'+
         '<button id="recAdd">Add</button></div>';
   $("recSetup").innerHTML=html;
+  if(recEditing&&$("tedArea")){
+    var er=findRec(recEditing);
+    $("tedArea").value=(er&&er.text)||"";
+    var info=function(){
+      var pv=parseVerses($("tedArea").value), n=pv.lines.length;
+      if(!n){ $("tedInfo").textContent="No text — the counter shows just the count"; return; }
+      var o=pv.bodyStart, c=n-pv.closeStart, b=n-o-c;
+      $("tedInfo").textContent="Shows as "+n+" screen lines"+((o||c)?" \u00b7 opening "+o+" \u00b7 repeated "+b+" \u00b7 closing "+c:"")+
+        (pv.bad?" \u00b7 markers ignored: [repeat] must come before [closing], with lines between":"");
+    };
+    info(); $("tedArea").addEventListener("input",info);
+    $("tedSave").addEventListener("click",function(){
+      var r2=findRec(recEditing); if(!r2) return;
+      var v=$("tedArea").value.replace(/\r/g,"").replace(/^\s+|\s+$/g,"");
+      if(v) r2.text=v; else delete r2.text;
+      recEditing=null; save(); drawRecSetup(); render();
+      toast(v?"Text saved \u00b7 "+splitVerses(v).length+" lines":"Text removed");
+    });
+    $("tedCancel").addEventListener("click",function(){ recEditing=null; drawRecSetup(); });
+  }
+  Array.prototype.forEach.call($("recSetup").querySelectorAll("[data-rtext]"),function(b){
+    b.addEventListener("click",function(){ var id=b.getAttribute("data-rtext"); recEditing=(recEditing===id)?null:id; drawRecSetup(); });
+  });
   Array.prototype.forEach.call($("recSetup").querySelectorAll("[data-rcount]"),function(b){
     b.addEventListener("click",function(){ openRecCounter(b.getAttribute("data-rcount")); });
   });
@@ -905,8 +1182,10 @@ function drawRecSetup(){
   $("recAdd").addEventListener("click",function(){
     var n=$("recNew").value.trim();
     if(!n){ toast("Type a name first"); return; }
-    S.recList.push({id:"r"+Date.now().toString(36),n:n,archived:false});
-    save(); drawRecSetup(); drawRecite(); toast("Added");
+    var nid="r"+Date.now().toString(36);
+    S.recList.push({id:nid,n:n,archived:false});
+    recEditing=nid;
+    save(); drawRecSetup(); drawRecite(); toast("Added \u2014 paste its text, or Cancel to skip");
   });
   Array.prototype.forEach.call($("recSetup").querySelectorAll("[data-rc]"),function(b){
     b.addEventListener("click",function(){ recCompleteTap(b.getAttribute("data-rc")); });
