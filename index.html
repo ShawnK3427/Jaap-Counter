@@ -452,7 +452,7 @@ input[type=text]{width:100%;text-align:left}
     <div class="sec">Reset</div>
     <div class="row"><div><div class="t">Clear the current mala</div><p>Sets the ring back to zero. Counts already recorded stay.</p></div><button id="clrMala" style="color:var(--muted);font-size:11px;letter-spacing:.16em;text-transform:uppercase">Clear</button></div>
     <div class="row"><div><div class="t danger">Erase everything</div><p>Deletes all history on this device permanently. Tap twice to confirm.</p></div><button id="clrAll" class="danger" style="font-size:11px;letter-spacing:.16em;text-transform:uppercase">Erase</button></div>
-    <p class="note" id="buildTag" style="text-align:center;margin-top:28px">Build 15 · 20 Oct 2026</p>
+    <p class="note" id="buildTag" style="text-align:center;margin-top:28px">Build#16 · 20 Oct 2026</p>
   </div>
 </div>
 
@@ -926,8 +926,8 @@ function vClamp(x){ return Math.max(V_MIN,Math.min(V_MAX,x)); }
                          scroll to your click
      ▲ again there     — stay on it: 1.5 s more now, + half of that remembered
      ▼                 — the line you click past, − half the time it still had left
-   Only after an automatic scroll, while running in Auto. */
-var V_LEARN=0.5, V_GRACE=1500, V_FLOOR=90;
+   Only while running in Auto. */
+var V_LEARN=0.5, V_GRACE=1500, V_FLOOR=90, V_CATCH=1500;
 function vAdjOf(r,line){ return (r&&r.adj&&typeof r.adj[line]==="number")?r.adj[line]:0; }
 function vRepeatRange(){ var a=V.bodyStart,b=V.closeStart; if(b<=a){ a=0; b=V.lines.length; } return [a,b]; }
 function vRepChars(){ var rg=vRepeatRange(), c=0; for(var i=rg[0];i<rg[1];i++) c+=vLen(V.lines[i]); return c||1; }
@@ -1041,7 +1041,10 @@ function vAdvance(manual){
   if(V.atEnd){ if(manual) toast("End of text \u2014 press your button to count"); return; }
   if(!manual&&V.repeating&&vHasClose()&&V.idx===V.closeStart-1){ V.gated=true; vPaint(); return; }
   var live=vAuto()&&V.started&&!V.paused, el=Date.now()-V.t0;
-  if(manual&&live&&!V.gated&&V.autoIn&&el>=V_SKIP){
+  /* reached by a scroll: any press after 0.7 s is feedback. Reached by your own ▼: only
+     after 1.5 s on the line, so quick catch-up presses don't trim. Never on a line you
+     came back to with ▲. */
+  if(manual&&live&&!V.gated&&!V.cameBack&&el>=(V.autoIn?V_SKIP:V_CATCH)){
     var cut=V_LEARN*Math.max(0,vDue(V.idx)-el);
     if(cut>=50){ vAdjust(V.idx,-cut); toast("Line "+(V.idx+1)+" \u2212"+(cut/1000).toFixed(1)+" s"); }
   }
