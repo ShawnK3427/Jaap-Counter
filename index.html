@@ -452,6 +452,7 @@ input[type=text]{width:100%;text-align:left}
     <div class="sec">Reset</div>
     <div class="row"><div><div class="t">Clear the current mala</div><p>Sets the ring back to zero. Counts already recorded stay.</p></div><button id="clrMala" style="color:var(--muted);font-size:11px;letter-spacing:.16em;text-transform:uppercase">Clear</button></div>
     <div class="row"><div><div class="t danger">Erase everything</div><p>Deletes all history on this device permanently. Tap twice to confirm.</p></div><button id="clrAll" class="danger" style="font-size:11px;letter-spacing:.16em;text-transform:uppercase">Erase</button></div>
+    <p class="note" id="buildTag" style="text-align:center;margin-top:28px">Build 15 · 20 Oct 2026</p>
   </div>
 </div>
 
@@ -887,7 +888,7 @@ function toJapa(){ S.mode="japa"; save(); render(); syncWake(); }
    like ॥१॥ stay with their line). Pace is learned per character, so long lines stay
    longer: each ▼ or ▲ press is a sample, and the last five are averaged. With no
    samples yet, the recitation's average recorded time is spread over the text. */
-var V={id:null,sig:null,lines:[],bodyStart:0,closeStart:0,repeating:false,gated:false,used:false,autoIn:false,idx:0,t0:0,started:false,paused:true,atEnd:false,rolling:false,timer:null,tick:null,dwell:[],pausedAt:0};
+var V={id:null,sig:null,lines:[],bodyStart:0,closeStart:0,repeating:false,gated:false,used:false,autoIn:false,cameBack:false,idx:0,t0:0,started:false,paused:true,atEnd:false,rolling:false,timer:null,tick:null,dwell:[],pausedAt:0};
 var V_ROW=54, V_DEF=180, V_MIN=30, V_MAX=2000, V_SKIP=700;
 /* Marker lines: everything above [repeat] is said on the first round only; everything
    below [closing] on the last round only. Both optional; the lines themselves never show. */
@@ -916,31 +917,32 @@ function vClamp(x){ return Math.max(V_MIN,Math.min(V_MAX,x)); }
    of you: slower by 15%. ▼ means you're ahead of it: faster by 8%. The steps are
    lopsided on purpose so it settles on the slow side, and no single press can swing it. */
 /* Base + per-line corrections.
-   Base (ms per character) comes from your measured rounds: the median of the last 7
-   timed rounds, minus whatever the per-line corrections already add, spread over the
-   repeated lines. So the whole round matches how long you really take, and corrections
-   only move time between lines. Without timed rounds: an earlier tuned pace, else a default.
-   Corrections are stored per line text (so edits elsewhere don't shift them):
-     ▲ — the line that just scrolled away gets + half the time from that scroll to your click
-     ▼ — the line you click past gets − half the time it still had left
+   Base (ms per character) is your measured speed: the median of your last 7 timed rounds
+   over the repeated lines. Rounds faster than 90 ms per character (quick test counts) are
+   ignored, and at least 3 real rounds are needed; until then an earlier tuned pace or a
+   default is used. Corrections are per line (stored by the line's text) and change only
+   that line:
+     ▲ after a scroll — back to the line that scrolled away, + half the time from that
+                         scroll to your click
+     ▲ again there     — stay on it: 1.5 s more now, + half of that remembered
+     ▼                 — the line you click past, − half the time it still had left
    Only after an automatic scroll, while running in Auto. */
-var V_LEARN=0.5, V_GRACE=1500;
+var V_LEARN=0.5, V_GRACE=1500, V_FLOOR=90;
 function vAdjOf(r,line){ return (r&&r.adj&&typeof r.adj[line]==="number")?r.adj[line]:0; }
 function vRepeatRange(){ var a=V.bodyStart,b=V.closeStart; if(b<=a){ a=0; b=V.lines.length; } return [a,b]; }
+function vRepChars(){ var rg=vRepeatRange(), c=0; for(var i=rg[0];i<rg[1];i++) c+=vLen(V.lines[i]); return c||1; }
 function vTimed(r){
-  var RT=r?recTimesOf(r.id).slice(-7).map(function(x){return x.d;}):[];
-  if(!RT.length) return null;
+  if(!r||!V.lines.length) return null;
+  var chars=vRepChars();
+  var RT=recTimesOf(r.id).map(function(x){return x.d;}).filter(function(d){ return d/chars>=V_FLOOR; }).slice(-7);
+  if(RT.length<3) return null;
   RT.sort(function(x,y){return x-y;});
   var m=RT.length%2?RT[(RT.length-1)/2]:(RT[RT.length/2-1]+RT[RT.length/2])/2;
-  return {n:RT.length,median:m};
+  return {n:RT.length,median:m,chars:chars};
 }
 function vPace(r){
   var T=vTimed(r);
-  if(T&&V.lines.length){
-    var rg=vRepeatRange(), chars=0, adj=0;
-    for(var i=rg[0];i<rg[1];i++){ chars+=vLen(V.lines[i]); adj+=vAdjOf(r,V.lines[i]); }
-    return vClamp((T.median-adj)/chars);
-  }
+  if(T) return vClamp(T.median/T.chars);
   if(r&&typeof r.pace==="number") return vClamp(r.pace);
   return V_DEF;
 }
@@ -971,7 +973,7 @@ function verseLoad(r){
   verseStop();
   var pv=parseVerses(r.text);
   V.id=r.id; V.sig=r.text; V.lines=pv.lines; V.bodyStart=pv.bodyStart; V.closeStart=pv.closeStart;
-  V.repeating=false; V.gated=false; V.used=false; V.autoIn=false; V.idx=0; V.started=false; V.paused=true;
+  V.repeating=false; V.gated=false; V.used=false; V.autoIn=false; V.cameBack=false; V.idx=0; V.started=false; V.paused=true;
   V.atEnd=false; V.rolling=false; V.dwell=[]; V.t0=Date.now();
   vPaint();
 }
@@ -1039,25 +1041,37 @@ function vAdvance(manual){
   if(V.atEnd){ if(manual) toast("End of text \u2014 press your button to count"); return; }
   if(!manual&&V.repeating&&vHasClose()&&V.idx===V.closeStart-1){ V.gated=true; vPaint(); return; }
   var live=vAuto()&&V.started&&!V.paused, el=Date.now()-V.t0;
-  if(manual&&live&&!V.gated&&V.autoIn&&el>=V_SKIP) vAdjust(V.idx,-V_LEARN*Math.max(0,vDue(V.idx)-el));
+  if(manual&&live&&!V.gated&&V.autoIn&&el>=V_SKIP){
+    var cut=V_LEARN*Math.max(0,vDue(V.idx)-el);
+    if(cut>=50){ vAdjust(V.idx,-cut); toast("Line "+(V.idx+1)+" \u2212"+(cut/1000).toFixed(1)+" s"); }
+  }
   V.gated=false;
   V.dwell[V.idx]=el;
   vRoll(1,function(){
     if(V.idx+1>=V.lines.length){ V.atEnd=true; V.idx=V.lines.length; } else V.idx++;
-    V.autoIn=!manual;
+    V.autoIn=!manual; V.cameBack=false;
     V.t0=Date.now(); if(V.paused) V.pausedAt=V.t0;
     vPaint(); vSchedule();
   });
 }
 function vBack(){
   if(V.rolling||!verseActive()) return;
+  var live=vAuto()&&V.started&&!V.paused&&!V.gated;
+  if(live&&V.cameBack&&!V.atEnd){
+    var b4=vDue(V.idx); vAdjust(V.idx,V_LEARN*V_GRACE);
+    V.t0+=V_GRACE-(vDue(V.idx)-b4);
+    toast("Line "+(V.idx+1)+" +"+(V_LEARN*V_GRACE/1000).toFixed(1)+" s \u00b7 holding");
+    vPaint(); vSchedule(); return;
+  }
   if(V.idx===0&&!V.atEnd) return;
   var prev=V.atEnd?V.lines.length-1:V.idx-1;
-  var live=vAuto()&&V.started&&!V.paused&&!V.gated;
-  if(live&&V.autoIn){ var d=Math.min(Date.now()-V.t0,2*vDue(prev)); vAdjust(prev,V_LEARN*d); }
+  if(live&&V.autoIn){
+    var d=Math.min(Date.now()-V.t0,2*vDue(prev)), add=V_LEARN*d;
+    vAdjust(prev,add); toast("Line "+(prev+1)+" +"+(add/1000).toFixed(1)+" s");
+  }
   V.gated=false;
   vRoll(-1,function(){
-    V.idx=prev; V.atEnd=false; V.autoIn=false;
+    V.idx=prev; V.atEnd=false; V.autoIn=false; V.cameBack=live;
     /* back on a line you're still saying: give it a short grace, not its full time again */
     var due=vDue(prev), rest=live?Math.min(due,Math.max(V_GRACE,0.3*due)):due;
     V.t0=Date.now()-(due-rest); if(V.paused) V.pausedAt=Date.now();
@@ -1078,7 +1092,7 @@ var vCd=null, vCdLeft=0;
 function vCdStop(){ if(vCd){ clearInterval(vCd); vCd=null; } vCdLeft=0; }
 function vBegin(){
   vCdStop();
-  V.started=true; V.used=true; V.autoIn=false; V.paused=false; V.t0=Date.now(); recStart=Date.now();
+  V.started=true; V.used=true; V.autoIn=false; V.cameBack=false; V.paused=false; V.t0=Date.now(); recStart=Date.now();
   vPaint(); vSchedule();
 }
 function vCdStart(){
@@ -1102,7 +1116,7 @@ function verseAfterCount(){
   if(!verseActive()||(vAuto()&&!V.used)) return;
   var done=vHasClose()&&(V.atEnd||V.idx>=V.lines.length-1);
   if(done){ V.idx=0; V.repeating=false; } else { V.idx=V.bodyStart; V.repeating=true; }
-  V.atEnd=false; V.gated=false; V.autoIn=false; V.dwell=[]; V.t0=Date.now();
+  V.atEnd=false; V.gated=false; V.autoIn=false; V.cameBack=false; V.dwell=[]; V.t0=Date.now();
   if(vAuto()){ V.started=false; V.paused=true; } else { V.started=true; V.paused=false; }
   vPaint(); vSchedule();
   if(vAuto()&&V.used) vCdStart();
