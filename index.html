@@ -452,7 +452,7 @@ input[type=text]{width:100%;text-align:left}
     <div class="sec">Reset</div>
     <div class="row"><div><div class="t">Clear the current mala</div><p>Sets the ring back to zero. Counts already recorded stay.</p></div><button id="clrMala" style="color:var(--muted);font-size:11px;letter-spacing:.16em;text-transform:uppercase">Clear</button></div>
     <div class="row"><div><div class="t danger">Erase everything</div><p>Deletes all history on this device permanently. Tap twice to confirm.</p></div><button id="clrAll" class="danger" style="font-size:11px;letter-spacing:.16em;text-transform:uppercase">Erase</button></div>
-    <p class="note" id="buildTag" style="text-align:center;margin-top:28px">Build#16 · 20 Oct 2026</p>
+    <p class="note" id="buildTag" style="text-align:center;margin-top:28px">Build#17 · 22 Oct 2026</p>
   </div>
 </div>
 
@@ -559,11 +559,25 @@ function migrate(){
   for(k in S.recite) if(!S.recList.some(function(r){return r.id===k;})) S.recList.push({id:k,n:LEGACY_REC[k]||k,archived:false});
   /* verse pace: samples from the first version were biased fast; start clean */
   (S.recList||[]).forEach(function(r){ if("paceS" in r) delete r.paceS; });
+  /* an empty recitation named "null", left by an early build */
+  if(S.recite["null"]&&!Object.keys(S.recite["null"]).length){
+    delete S.recite["null"];
+    S.recList=S.recList.filter(function(r){ return r.id!=="null"; });
+  }
   /* counter mode */
   if(S.mode!=="rec"&&S.mode!=="japa") S.mode="japa";
   /* excused days are data, not code */
   if(!Array.isArray(S.fixes)) S.fixes=[];
   if(!Array.isArray(S.excused)) S.excused=[];
+  /* fixed base, once: keep each recitation's scroll exactly as it was (the old measured
+     base, without netting corrections); from here on it only moves with ▲▼ */
+  if(S.fixes.indexOf("base-fixed")<0){
+    S.recList.forEach(function(r){
+      if(typeof r.base==="number") return;
+      var T=vTimed(r); if(T) r.base=Math.round(vClamp(T.median/T.chars)*10)/10;
+    });
+    S.fixes.push("base-fixed");
+  }
   /* one device only: earlier builds wrote this marker on the original owner's phone
      and excused 11 Sep 2026 in code. Carry that into data once; no other data has the marker. */
   if(S.fixes.indexOf("chalisa-counts-2026-09")>=0&&S.fixes.indexOf("excused-in-data")<0){
@@ -701,6 +715,7 @@ function count(src){
     recSet(rid,rk,recCount(rid,rk)+1);
     var tr=recTimeCount(rid,Date.now());
     if(tr) flashTime(tr.d); else clearFlash();
+    if(tr) vLockBase(findRec(rid));
     var rn=$("recNum"); rn.classList.add("pulse"); setTimeout(function(){ rn.classList.remove("pulse"); },120);
     flare(); buzz(14); save(); render(); verseAfterCount(); return;
   }
@@ -869,6 +884,7 @@ function findRec(id){ var L=S.recList||[]; for(var i=0;i<L.length;i++) if(L[i].i
 function recDone(id,key){ return !!(S.recite[id]&&S.recite[id][key]); }
 function recCount(id,key){ var v=S.recite[id]&&S.recite[id][key]; return Number(v)||0; }
 function recSet(id,key,n){
+  if(!id||!findRec(id)) return;
   if(!S.recite[id]) S.recite[id]={};
   if(n>0) S.recite[id][key]=n; else delete S.recite[id][key];
 }
@@ -913,15 +929,15 @@ function parseVerses(t){
 function splitVerses(t){ return parseVerses(t).lines; }
 function vLen(s){ return (String(s).replace(/[\s,.;:!?।॥०-९0-9\-–—'"()]/g,"").length)||1; }
 function vClamp(x){ return Math.max(V_MIN,Math.min(V_MAX,x)); }
-/* Pace is one number per recitation (ms per character). ▲ means the scroll got ahead
-   of you: slower by 15%. ▼ means you're ahead of it: faster by 8%. The steps are
-   lopsided on purpose so it settles on the slow side, and no single press can swing it. */
 /* Base + per-line corrections.
-   Base (ms per character) is your measured speed: the median of your last 7 timed rounds
-   over the repeated lines. Rounds faster than 90 ms per character (quick test counts) are
-   ignored, and at least 3 real rounds are needed; until then an earlier tuned pace or a
-   default is used. Corrections are per line (stored by the line's text) and change only
-   that line:
+   Base (ms per character, r.base) is set once and then stays fixed: only ▲▼ change the
+   scroll after that. It is set from your first 3 real timed rounds (median of up to the
+   last 7 over the repeated lines; rounds under 90 ms per character are quick test counts
+   and ignored), net of any corrections already made, so a full round of the scroll
+   matches those rounds. Until then an earlier tuned pace or a default is used. A base that
+   kept re-measuring would absorb ▼ trims into itself and then apply them a second time.
+   Reset pace clears the base and the corrections and sets the base again from your rounds.
+   Corrections are per line (stored by the line's text) and change only that line:
      ▲ after a scroll — back to the line that scrolled away, + half the time from that
                          scroll to your click
      ▲ again there     — stay on it: 1.5 s more now, + half of that remembered
@@ -931,30 +947,45 @@ var V_LEARN=0.5, V_GRACE=1500, V_FLOOR=90, V_CATCH=1500;
 function vAdjOf(r,line){ return (r&&r.adj&&typeof r.adj[line]==="number")?r.adj[line]:0; }
 function vRepeatRange(){ var a=V.bodyStart,b=V.closeStart; if(b<=a){ a=0; b=V.lines.length; } return [a,b]; }
 function vRepChars(){ var rg=vRepeatRange(), c=0; for(var i=rg[0];i<rg[1];i++) c+=vLen(V.lines[i]); return c||1; }
+/* repeated lines of a recitation's own text (not necessarily the one on screen) */
+function vRepLinesOf(r){
+  var pv=parseVerses(r&&r.text), a=pv.bodyStart, b=pv.closeStart;
+  if(b<=a){ a=0; b=pv.lines.length; }
+  return pv.lines.slice(a,b);
+}
 function vTimed(r){
-  if(!r||!V.lines.length) return null;
-  var chars=vRepChars();
+  if(!r||!r.text) return null;
+  var L=vRepLinesOf(r), chars=0; L.forEach(function(l){ chars+=vLen(l); }); if(!L.length) return null;
   var RT=recTimesOf(r.id).map(function(x){return x.d;}).filter(function(d){ return d/chars>=V_FLOOR; }).slice(-7);
   if(RT.length<3) return null;
   RT.sort(function(x,y){return x-y;});
   var m=RT.length%2?RT[(RT.length-1)/2]:(RT[RT.length/2-1]+RT[RT.length/2])/2;
-  return {n:RT.length,median:m,chars:chars};
+  var adj=0; L.forEach(function(l){ adj+=vAdjOf(r,l); });
+  return {n:RT.length,median:m,chars:chars,adj:adj};
+}
+/* set the base once, from real rounds, net of corrections already made */
+function vLockBase(r){
+  if(!r||typeof r.base==="number") return false;
+  var T=vTimed(r); if(!T) return false;
+  r.base=Math.round(vClamp((T.median-T.adj)/T.chars)*10)/10;
+  return true;
 }
 function vPace(r){
-  var T=vTimed(r);
-  if(T) return vClamp(T.median/T.chars);
+  if(r&&typeof r.base==="number") return vClamp(r.base);
   if(r&&typeof r.pace==="number") return vClamp(r.pace);
   return V_DEF;
 }
 function vTunedCount(r){ var n=0; if(r&&r.adj) for(var k in r.adj) if(r.adj[k]) n++; return n; }
+/* average time a line actually gets on screen, corrections included */
 function vLineSecs(r){
   if(!V.lines.length) return 0;
-  var c=0; for(var i=0;i<V.lines.length;i++) c+=vLen(V.lines[i]);
-  return vPace(r)*c/V.lines.length/1000;
+  var t=0, p=vPace(r);
+  for(var i=0;i<V.lines.length;i++){ var b=p*vLen(V.lines[i]); t+=Math.max(0.4*b,b+vAdjOf(r,V.lines[i])); }
+  return t/V.lines.length/1000;
 }
 function vPaceLabel(r){
   if(!vAuto()) return "\u25b2\u25bc move freely";
-  var src=vTimed(r)?"measured":((r&&typeof r.pace==="number")?"earlier tuning":"starting pace");
+  var src=(r&&typeof r.base==="number")?"fixed base":((r&&typeof r.pace==="number")?"earlier tuning":"starting pace");
   var k=vTunedCount(r);
   return "~"+vLineSecs(r).toFixed(1)+" s/line \u00b7 "+src+(k?" \u00b7 "+k+" line"+(k>1?"s":"")+" tuned":"");
 }
@@ -972,6 +1003,7 @@ function verseStop(){ clearTimeout(V.timer); V.timer=null; clearInterval(V.tick)
 function verseLoad(r){
   verseStop();
   var pv=parseVerses(r.text);
+  if(vLockBase(r)) save();
   V.id=r.id; V.sig=r.text; V.lines=pv.lines; V.bodyStart=pv.bodyStart; V.closeStart=pv.closeStart;
   V.repeating=false; V.gated=false; V.used=false; V.autoIn=false; V.cameBack=false; V.idx=0; V.started=false; V.paused=true;
   V.atEnd=false; V.rolling=false; V.dwell=[]; V.t0=Date.now();
@@ -1220,7 +1252,7 @@ function drawRecSetup(){
     html+='<div class="row"><div><div class="t">'+esc(r.n)+'</div><p>'+sub+'</p></div>'+
           '<div class="acts">'+(c?'':'<button data-rcount="'+r.id+'" style="color:var(--ghee)">Count</button>')+
           '<button data-rtext="'+r.id+'">Text</button>'+
-          ((typeof r.pace==="number"||vTunedCount(r))?'<button data-rpace="'+r.id+'">Reset pace</button>':'')+
+          ((typeof r.pace==="number"||typeof r.base==="number"||vTunedCount(r))?'<button data-rpace="'+r.id+'">Reset pace</button>':'')+
           '<button data-rc="'+r.id+'" style="color:var(--muted)">'+lbl+'</button>'+
           '<button data-ra="'+r.id+'">Archive</button></div></div>';
     if(recEditing===r.id)
@@ -1257,7 +1289,7 @@ function drawRecSetup(){
   Array.prototype.forEach.call($("recSetup").querySelectorAll("[data-rpace]"),function(b){
     b.addEventListener("click",function(){
       var r3=findRec(b.getAttribute("data-rpace")); if(!r3) return;
-      delete r3.pace; delete r3.adj; save(); drawRecSetup(); if(verseActive()) vPaint();
+      delete r3.pace; delete r3.adj; delete r3.base; vLockBase(r3); save(); drawRecSetup(); if(verseActive()) vPaint();
       toast("Pace reset \u2014 line corrections cleared");
     });
   });
